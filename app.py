@@ -2,6 +2,9 @@
 Discock - Веб-мессенджер наподобие Discord
 Главный файл приложения Flask
 """
+import eventlet
+eventlet.monkey_patch()
+
 import os
 from flask import Flask, render_template, request, jsonify, redirect, url_for
 from flask_socketio import SocketIO, emit, join_room, leave_room

@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+
+{% block title %}Чат - Discock{% endblock %}
+
+{% block head %}
+<script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="chat-layout">
+    <!-- Боковая панель с комнатами -->
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <h2>Discock</h2>
+            <div class="user-info">
+                <span class="username">{{ current_user.username }}</span>
+                <span class="user-city">📍 {{ current_user.city }}</span>
+            </div>
+            <a href="{{ url_for('logout') }}" class="logout-btn">Выйти</a>
+        </div>
+        
+        <div class="rooms-section">
+            <div class="rooms-header">
+                <h3>Комнаты</h3>
+                <button id="create-room-btn" class="btn-icon" title="Создать комнату">+</button>
+            </div>
+            <ul class="rooms-list" id="rooms-list">
+                {% for room in rooms %}
+                <li class="room-item {% if current_room and room.id == current_room.id %}active{% endif %}">
+                    <a href="{{ url_for('chat', room=room.id) }}" data-room-id="{{ room.id }}">
+                        <span class="room-icon">#</span>
+                        <span class="room-name">{{ room.name }}</span>
+                    </a>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        
+        <!-- Список пользователей в текущей комнате -->
+        {% if current_room %}
+        <div class="users-section" id="users-section">
+            <div class="users-header">
+                <h3>В комнате</h3>
+                <span class="users-count" id="users-count">0</span>
+            </div>
+            <ul class="users-list" id="users-list">
+                <!-- Пользователи добавляются через JavaScript -->
+            </ul>
+        </div>
+        {% endif %}
+    </aside>
+    
+    <!-- Основная область чата -->
+    <main class="chat-main">
+        {% if current_room %}
+        <div class="chat-header">
+            <div class="chat-header-top">
+                <div>
+                    <h2># {{ current_room.name }}</h2>
+                    {% if current_room.description %}
+                    <p class="room-description">{{ current_room.description }}</p>
+                    {% endif %}
+                </div>
+                <div class="voice-controls">
+                    <button id="toggle-mic-btn" class="voice-btn" title="Включить/выключить микрофон">
+                        <span id="mic-icon">🎤</span>
+                        <span id="mic-status">Выключен</span>
+                    </button>
+                    <button id="toggle-speaker-btn" class="voice-btn active" title="Включить/выключить динамики">
+                        <span id="speaker-icon">🔊</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="messages-container" id="messages-container">
+            {% for message in messages %}
+            <div class="message" data-message-id="{{ message.id }}">
+                <div class="message-header">
+                    <span class="message-author">{{ message.user.username }}</span>
+                    <span class="message-city">📍 {{ message.user.city }}</span>
+                    <span class="message-time">{{ message.timestamp.strftime('%H:%M') }}</span>
+                </div>
+                <div class="message-content">{{ message.content }}</div>
+            </div>
+            {% endfor %}
+        </div>
+        
+        <div class="message-input-container">
+            <form id="message-form" class="message-form">
+                <input 
+                    type="text" 
+                    id="message-input" 
+                    class="message-input" 
+                    placeholder="Напишите сообщение..."
+                    autocomplete="off"
+                >
+                <button type="submit" class="send-btn">Отправить</button>
+            </form>
+        </div>
+        {% else %}
+        <div class="no-room-selected">
+            <p>Выберите комнату для общения</p>
+        </div>
+        {% endif %}
+    </main>
+</div>
+
+<!-- Модальное окно для создания комнаты -->
+<div id="create-room-modal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Создать комнату</h3>
+            <button class="modal-close" id="close-modal">&times;</button>
+        </div>
+        <form id="create-room-form" class="modal-form">
+            <div class="form-group">
+                <label for="room-name">Название комнаты</label>
+                <input type="text" id="room-name" class="form-input" required placeholder="Введите название">
+            </div>
+            <div class="form-group">
+                <label for="room-description">Описание (необязательно)</label>
+                <textarea id="room-description" class="form-input" rows="3" placeholder="Описание комнаты"></textarea>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" id="cancel-create-room">Отмена</button>
+                <button type="submit" class="btn btn-primary">Создать</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const CURRENT_ROOM_ID = {% if current_room %}{{ current_room.id }}{% else %}null{% endif %};
+    const CURRENT_USER = {
+        id: {{ current_user.id }},
+        username: "{{ current_user.username }}",
+        city: "{{ current_user.city }}"
+    };
+</script>
+<script src="{{ url_for('static', filename='js/voice-chat.js') }}"></script>
+<script src="{{ url_for('static', filename='js/chat.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}Вход - Discock{% endblock %}
+
+{% block content %}
+<div class="auth-container">
+    <div class="auth-box">
+        <h1>Discock</h1>
+        <p class="subtitle">Веб-мессенджер для общения с друзьями</p>
+        
+        {% if error %}
+        <div class="error-message">{{ error }}</div>
+        {% endif %}
+        
+        <form method="POST" action="{{ url_for('login') }}" class="auth-form">
+            {{ form.hidden_tag() }}
+            
+            <div class="form-group">
+                {{ form.username.label(class="form-label") }}
+                {{ form.username(class="form-input", placeholder="Введите имя пользователя") }}
+                {% if form.username.errors %}
+                    <div class="error-text">{{ form.username.errors[0] }}</div>
+                {% endif %}
+            </div>
+            
+            <div class="form-group">
+                {{ form.password.label(class="form-label") }}
+                {{ form.password(class="form-input", placeholder="Введите пароль") }}
+                {% if form.password.errors %}
+                    <div class="error-text">{{ form.password.errors[0] }}</div>
+                {% endif %}
+            </div>
+            
+            <div class="form-group">
+                <label class="checkbox-label">
+                    {{ form.remember_me() }}
+                    {{ form.remember_me.label.text }}
+                </label>
+            </div>
+            
+            <button type="submit" class="btn btn-primary btn-block">Войти</button>
+        </form>
+        
+        <p class="auth-link">
+            Нет аккаунта? <a href="{{ url_for('register') }}">Зарегистрироваться</a>
+        </p>
+    </div>
+</div>
+{% endblock %}

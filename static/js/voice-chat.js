@@ -1,176 +1,178 @@
 /**
- * Discock - Голосовой чат через WebRTC (ПОЛНАЯ ВЕРСИЯ)
+ * Discock - Voice Chat Logic (WebRTC Mesh)
  */
 
 let localStream = null;
-let peers = {}; // {userId: {pc: RTCPeerConnection, iceQueue: []}}
+let peers = {}; // { user_id: { pc: RTCPeerConnection, iceQueue: [] } }
 let isMicMuted = true;
-let isSpeakerMuted = false;
 
-function initVoiceChat() {
-    console.log('🎤 Инициализация голосового чата...');
-    const micBtn = document.getElementById('toggle-mic-btn');
-    const speakerBtn = document.getElementById('toggle-speaker-btn');
-    
-    if (micBtn) micBtn.addEventListener('click', toggleMicrophone);
-    if (speakerBtn) speakerBtn.addEventListener('click', toggleSpeaker);
-}
+// Конфигурация с публичными STUN-серверами Google (для связи между городами)
+const rtcConfig = {
+    iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' }
+    ]
+};
 
-// Управление микрофоном
-async function toggleMicrophone() {
+async function initVoiceChat() {
     try {
-        if (!localStream) {
-            console.log('Запрос доступа к микрофону...');
-            localStream = await navigator.mediaDevices.getUserMedia({ 
-                audio: { echoCancellation: true, noiseSuppression: true } 
-            });
-            console.log('Микрофон получен');
-        }
-
-        isMicMuted = !isMicMuted;
+        // Сразу запрашиваем доступ к микрофону при загрузке
+        localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        // По умолчанию микрофон выключен (track.enabled = false)
         localStream.getAudioTracks().forEach(track => track.enabled = !isMicMuted);
-        updateMicButton(isMicMuted);
-
-        if (!isMicMuted) {
-            const track = localStream.getAudioTracks()[0];
-            for (const userId in peers) {
-                const pc = peers[userId].pc;
-                const senders = pc.getSenders();
-                const audioSender = senders.find(s => s.track && s.track.kind === 'audio');
-
-                if (!audioSender) {
-                    pc.addTrack(track, localStream);
-                    const offer = await pc.createOffer();
-                    await pc.setLocalDescription(offer);
-                    socket.emit('offer', { room_id: currentRoomId, target_user_id: userId, offer: pc.localDescription });
-                }
-            }
-            socket.emit('user_mic_enabled', { room_id: currentRoomId, user_id: CURRENT_USER.id });
-        } else {
-            socket.emit('user_mic_muted', { room_id: currentRoomId });
-        }
-    } catch (error) {
-        console.error('❌ Ошибка микрофона (подробно):', error.name, error.message);
-        alert(`Ошибка микрофона: ${error.message}`);
+        console.log("🎤 Микрофон готов");
+    } catch (e) {
+        console.error("❌ Доступ к микрофону запрещен:", e);
     }
 }
 
-// Создание соединения
-function createPeerConnection(userId, stream) {
-    if (peers[userId]) closePeerConnection(userId);
+function createPeerConnection(targetUserId, stream) {
+    if (peers[targetUserId]) return peers[targetUserId];
 
-    const pc = new RTCPeerConnection({
-        iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' }
-        ]
-    });
+    const pc = new RTCPeerConnection(rtcConfig);
+    peers[targetUserId] = { pc: pc, iceQueue: [], remoteDescSet: false };
 
-    const peerEntry = { pc: pc, iceQueue: [] };
-    peers[userId] = peerEntry;
-
+    // 1. Сразу добавляем наш поток в соединение, чтобы звук пошел сразу
     if (stream) {
-        stream.getAudioTracks().forEach(track => pc.addTrack(track, stream));
+        stream.getTracks().forEach(track => pc.addTrack(track, stream));
     }
 
+    // Обработка ICE-кандидатов
     pc.onicecandidate = (event) => {
         if (event.candidate) {
-            socket.emit('ice_candidate', { room_id: currentRoomId, target_user_id: userId, candidate: event.candidate });
+            socket.emit('ice_candidate', {
+                room_id: currentRoomId,
+                target_user_id: targetUserId,
+                candidate: event.candidate
+            });
         }
     };
 
+    // Когда получаем звук от собеседника
     pc.ontrack = (event) => {
-        console.log('🎧 Получен аудио поток от:', userId);
-        let audio = pc.audioElement || new Audio();
-        audio.srcObject = event.streams[0];
-        audio.autoplay = true;
-        pc.audioElement = audio;
-        event.streams[0].getAudioTracks().forEach(t => t.enabled = !isSpeakerMuted);
+        console.log(`🎧 Получен аудио поток от: ${targetUserId}`);
+        let remoteAudio = document.getElementById(`audio-${targetUserId}`);
+        if (!remoteAudio) {
+            remoteAudio = document.createElement('audio');
+            remoteAudio.id = `audio-${targetUserId}`;
+            remoteAudio.autoplay = true;
+            document.body.appendChild(remoteAudio);
+        }
+        remoteAudio.srcObject = event.streams[0];
     };
 
-    return peerEntry;
+    return peers[targetUserId];
 }
 
-// Функции обновления кнопок (БЫЛИ ПРОПУЩЕНЫ)
-function updateMicButton(muted) {
-    const micBtn = document.getElementById('toggle-mic-btn');
-    const micIcon = document.getElementById('mic-icon');
-    const micStatus = document.getElementById('mic-status');
-    if (micBtn) {
-        micBtn.classList.toggle('active', !muted);
-        micBtn.classList.toggle('muted', muted);
-        if (micIcon) micIcon.textContent = '🎤';
-        if (micStatus) micStatus.textContent = muted ? 'Выключен' : 'Включен';
-    }
-}
-
-function updateSpeakerButton(muted) {
-    const speakerBtn = document.getElementById('toggle-speaker-btn');
-    const speakerIcon = document.getElementById('speaker-icon');
-    if (speakerBtn) {
-        speakerBtn.classList.toggle('active', !muted);
-        if (speakerIcon) speakerIcon.textContent = muted ? '🔇' : '🔊';
-    }
-}
-
-// Обработка сигналов
+// Обработка Offer (предложение связи)
 async function handleOffer(data) {
-    const peerEntry = createPeerConnection(data.from_user_id, (localStream && !isMicMuted) ? localStream : null);
+    const { from_user_id, offer } = data;
+    const peerEntry = createPeerConnection(from_user_id, localStream);
+    const pc = peerEntry.pc;
+
     try {
-        await peerEntry.pc.setRemoteDescription(new RTCSessionDescription(data.offer));
-        const answer = await peerEntry.pc.createAnswer();
-        await peerEntry.pc.setLocalDescription(answer);
-        socket.emit('answer', { room_id: currentRoomId, target_user_id: data.from_user_id, answer: peerEntry.pc.localDescription });
-        processIceQueue(data.from_user_id);
-    } catch (e) { console.error('Ошибка Offer:', e); }
-}
+        await pc.setRemoteDescription(new RTCSessionDescription(offer));
+        peerEntry.remoteDescSet = true;
 
-async function handleAnswer(data) {
-    const peerEntry = peers[data.from_user_id];
-    if (!peerEntry) return;
-    try {
-        await peerEntry.pc.setRemoteDescription(new RTCSessionDescription(data.answer));
-        processIceQueue(data.from_user_id);
-    } catch (e) { console.error('Ошибка Answer:', e); }
-}
-
-function handleIceCandidate(data) {
-    const peerEntry = peers[data.from_user_id];
-    if (!peerEntry) return;
-    if (peerEntry.pc.remoteDescription) {
-        peerEntry.pc.addIceCandidate(new RTCIceCandidate(data.candidate)).catch(console.error);
-    } else {
-        peerEntry.iceQueue.push(data.candidate);
-    }
-}
-
-function processIceQueue(userId) {
-    const peerEntry = peers[userId];
-    if (peerEntry && peerEntry.iceQueue.length > 0) {
-        peerEntry.iceQueue.forEach(can => peerEntry.pc.addIceCandidate(new RTCIceCandidate(can)).catch(console.error));
-        peerEntry.iceQueue = [];
-    }
-}
-
-function toggleSpeaker() {
-    isSpeakerMuted = !isSpeakerMuted;
-    updateSpeakerButton(isSpeakerMuted);
-    Object.values(peers).forEach(p => {
-        if (p.pc.audioElement && p.pc.audioElement.srcObject) {
-            p.pc.audioElement.srcObject.getAudioTracks().forEach(t => t.enabled = !isSpeakerMuted);
+        // Обрабатываем накопившиеся ICE-кандидаты
+        while (peerEntry.iceQueue.length > 0) {
+            const cand = peerEntry.iceQueue.shift();
+            await pc.addIceCandidate(cand);
         }
-    });
+
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+
+        socket.emit('answer', {
+            room_id: currentRoomId,
+            target_user_id: from_user_id,
+            answer: pc.localDescription
+        });
+    } catch (e) {
+        console.error("❌ Ошибка при обработке Offer:", e);
+    }
 }
 
-function closePeerConnection(userId) {
-    if (peers[userId]) {
-        const pc = peers[userId].pc;
-        if (pc.audioElement) { pc.audioElement.pause(); pc.audioElement.srcObject = null; }
-        pc.close();
-        delete peers[userId];
+// Обработка Answer (ответ на предложение)
+async function handleAnswer(data) {
+    const { from_user_id, answer } = data;
+    const peerEntry = peers[from_user_id];
+    if (peerEntry) {
+        try {
+            if (peerEntry.pc.signalingState !== "stable") {
+                await peerEntry.pc.setRemoteDescription(new RTCSessionDescription(answer));
+                peerEntry.remoteDescSet = true;
+                
+                while (peerEntry.iceQueue.length > 0) {
+                    const cand = peerEntry.iceQueue.shift();
+                    await peerEntry.pc.addIceCandidate(cand);
+                }
+            }
+        } catch (e) {
+            console.error("❌ Ошибка при обработке Answer:", e);
+        }
+    }
+}
+
+// Обработка ICE-кандидатов (важно: очередь!)
+async function handleIceCandidate(data) {
+    const { from_user_id, candidate } = data;
+    const peerEntry = peers[from_user_id];
+    
+    if (peerEntry) {
+        try {
+            if (peerEntry.remoteDescSet) {
+                await peerEntry.pc.addIceCandidate(new RTCIceCandidate(candidate));
+            } else {
+                // Если описание еще не установлено, кладем в очередь
+                peerEntry.iceQueue.push(new RTCIceCandidate(candidate));
+            }
+        } catch (e) {
+            console.error("❌ Ошибка добавления ICE:", e);
+        }
+    }
+}
+
+// Переключение микрофона (только у себя!)
+function toggleMicrophone() {
+    if (!localStream) return;
+
+    isMicMuted = !isMicMuted;
+    
+    // Включаем/выключаем треки в нашем локальном стриме
+    localStream.getAudioTracks().forEach(track => {
+        track.enabled = !isMicMuted;
+    });
+
+    // Обновляем UI кнопки
+    const btn = document.getElementById('mic-toggle');
+    if (btn) {
+        btn.innerHTML = isMicMuted ? 
+            '<i class="fas fa-microphone-slash"></i> Выключен' : 
+            '<i class="fas fa-microphone"></i> Включен';
+        btn.classList.toggle('btn-danger', isMicMuted);
+        btn.classList.toggle('btn-success', !isMicMuted);
+    }
+
+    // Уведомляем сервер (только для иконок в списке пользователей)
+    if (isMicMuted) {
+        socket.emit('user_mic_muted', { room_id: currentRoomId });
+    } else {
+        socket.emit('user_mic_enabled', { room_id: currentRoomId });
     }
 }
 
 function cleanupVoiceChat() {
-    Object.keys(peers).forEach(closePeerConnection);
+    Object.keys(peers).forEach(id => closePeerConnection(id));
+    peers = {};
+}
+
+function closePeerConnection(userId) {
+    if (peers[userId]) {
+        peers[userId].pc.close();
+        delete peers[userId];
+        const audio = document.getElementById(`audio-${userId}`);
+        if (audio) audio.remove();
+    }
 }

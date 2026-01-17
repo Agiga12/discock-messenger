@@ -57,7 +57,7 @@ function createPeerConnection(targetUserId, stream) {
             remoteAudio = document.createElement('audio');
             remoteAudio.id = `audio-${targetUserId}`;
             remoteAudio.autoplay = true;
-            document.body.appendChild(remoteAudio);
+            document.getElementById('remote-audio-container').appendChild
         }
         remoteAudio.srcObject = event.streams[0];
     };

@@ -62,11 +62,12 @@
                     {% endif %}
                 </div>
                 <div class="voice-controls">
-                    <button id="toggle-mic-btn" class="voice-btn" title="Включить/выключить микрофон">
+                    <button id="mic-toggle" class="voice-btn btn-danger" title="Включить/выключить микрофон" onclick="toggleMicrophone()">
                         <span id="mic-icon">🎤</span>
                         <span id="mic-status">Выключен</span>
                     </button>
-                    <button id="toggle-speaker-btn" class="voice-btn active" title="Включить/выключить динамики">
+                    
+                    <button id="toggle-speaker-btn" class="voice-btn active" title="Включить/выключить динамики" onclick="toggleSpeaker()">
                         <span id="speaker-icon">🔊</span>
                     </button>
                 </div>
